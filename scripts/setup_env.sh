@@ -5,15 +5,19 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 module purge
-module load Miniconda3/24.11.1 CUDA/12.1.1
+# system gcc is 8.5; torch C++ extensions (detectron2) need >= 9, CUDA 12.1 allows <= 12
+module load Miniconda3/24.11.1 GCC/11.3.0 CUDA/12.1.1
 source "$(conda info --base)/etc/profile.d/conda.sh"
 
-conda create -n sam_3d_body python=3.11 -y
+conda env list | grep -q '^sam_3d_body ' || conda create -n sam_3d_body python=3.11 -y
 conda activate sam_3d_body
 
 pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
 
 pip install pytorch-lightning pyrender opencv-python yacs scikit-image einops timm dill pandas rich hydra-core hydra-submitit-launcher hydra-colorlog pyrootutils webdataset chump networkx==3.2.1 roma joblib seaborn wandb appdirs appnope ffmpeg cython jsonlines pytest xtcocotools loguru optree fvcore black pycocotools tensorboard huggingface_hub
+
+# detectron2 imports pkg_resources, which setuptools >= 81 no longer ships
+pip install "setuptools<81"
 
 export FORCE_CUDA=1 TORCH_CUDA_ARCH_LIST="7.5;8.0"
 pip install 'git+https://github.com/facebookresearch/detectron2.git@a1ce2f9' --no-build-isolation --no-deps
