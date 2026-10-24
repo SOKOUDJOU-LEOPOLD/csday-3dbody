@@ -1,0 +1,20 @@
+# model weights and tokens never go in git
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+*.pkl
+*.safetensors
+.env
+**/token
+# runtime outputs
+meshes/
+output/
+outputs/
+logs/
+*.glb
+__pycache__/
+*.pyc
+# team photos stay local (public repo)
+samples/*
+!samples/README.md
