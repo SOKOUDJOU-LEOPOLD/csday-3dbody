@@ -1,16 +1,27 @@
 #!/bin/bash
 # Builds the sam_3d_body conda env exactly as third_party/sam-3d-body/INSTALL.md describes.
-# Run on Grace (login node is fine; needs internet). Only extra choice made here: the
-# PyTorch build (cu121 wheels) and CUDA arch list for detectron2 (T4/RTX 6000 = 7.5, A100 = 8.0).
+# Needs internet. Only extra choices made here: the PyTorch build (cu121 wheels) and the
+# toolchain to compile detectron2 against it (nvcc 12.1 + gcc 11; CUDA 12.1 allows gcc <= 12).
+#   Grace (HPRC): Lmod modules provide both (system gcc 8.5 is too old).
+#   Workstation (e.g. Ubuntu 24.04 with only CUDA 13 / gcc 13): installed into the env via conda.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-module purge
-# system gcc is 8.5; torch C++ extensions (detectron2) need >= 9, CUDA 12.1 allows <= 12
-module load Miniconda3/24.11.1 GCC/11.3.0 CUDA/12.1.1
-source "$(conda info --base)/etc/profile.d/conda.sh"
+
+if type module &>/dev/null; then
+  module purge
+  module load Miniconda3/24.11.1 GCC/11.3.0 CUDA/12.1.1
+  source "$(conda info --base)/etc/profile.d/conda.sh"
+else
+  source "${CONDA_BASE:-$HOME/miniconda3}/etc/profile.d/conda.sh"
+fi
 
 conda env list | grep -q '^sam_3d_body ' || conda create -n sam_3d_body python=3.11 -y
 conda activate sam_3d_body
+
+if ! type module &>/dev/null; then
+  conda install -y -c nvidia/label/cuda-12.1.1 -c conda-forge cuda-toolkit gxx_linux-64=11 gcc_linux-64=11
+  export CUDA_HOME="$CONDA_PREFIX" CC="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-gcc" CXX="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-g++"
+fi
 
 pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
 
@@ -19,7 +30,8 @@ pip install pytorch-lightning pyrender opencv-python yacs scikit-image einops ti
 # detectron2 imports pkg_resources, which setuptools >= 81 no longer ships
 pip install "setuptools<81"
 
-export FORCE_CUDA=1 TORCH_CUDA_ARCH_LIST="7.5;8.0"
+# T4 / RTX 6000 = 7.5, A100 = 8.0, H100 = 9.0
+export FORCE_CUDA=1 TORCH_CUDA_ARCH_LIST="7.5;8.0;9.0"
 pip install 'git+https://github.com/facebookresearch/detectron2.git@a1ce2f9' --no-build-isolation --no-deps
 
 pip install git+https://github.com/microsoft/MoGe.git
@@ -34,5 +46,6 @@ pip install decord psutil
 # demo server deps (not part of upstream)
 pip install fastapi "uvicorn[standard]" python-multipart trimesh
 
-hf download facebook/sam-3d-body-dinov3 --local-dir "$ROOT/checkpoints/sam-3d-body-dinov3"
+test -f "$ROOT/checkpoints/sam-3d-body-dinov3/model.ckpt" ||
+  hf download facebook/sam-3d-body-dinov3 --local-dir "$ROOT/checkpoints/sam-3d-body-dinov3"
 echo "ENV READY"
